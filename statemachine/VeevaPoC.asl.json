@@ -1,0 +1,61 @@
+{
+  "Comment": "A Hello World example of the Amazon States Language using a Pass state",
+  "StartAt": "SetContext",
+  "States": {
+    "SetContext": {
+      "Type": "Pass",
+      "Parameters": {
+        "routes": [
+          {
+            "from": {
+              "uri": "direct:start",
+              "steps": [
+                {
+                  "to": {
+                    "uri": "aws2-s3",
+                    "parameters": {
+                      "bucketNameOrArn.$": "$.detail.requestParameters.bucketName",
+                      "operation": "GetObject",
+                      "keyName.$": "$.detail.requestParameters.key",
+                      "useDefaultCredentialsProvider": true,
+                      "region": "us-east-1"
+                    }
+                  }
+                },
+                {
+                  "to": "log:details?ShowAll=true"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "Next": "Lambda Invoke"
+    },
+    "Lambda Invoke": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "${LambdaFunctionArn}:$LATEST"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "End": true,
+      "ResultSelector": {
+        "Payload.$": "States.StringToJson($.Payload)"
+      },
+      "OutputPath": "$.Payload"
+    }
+  }
+}

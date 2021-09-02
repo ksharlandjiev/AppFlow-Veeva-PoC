@@ -1,0 +1,206 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  VeevaPoC
+
+  Sample SAM Template for VeevaPoC
+  
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 300
+
+Parameters:
+  CloudWatchLogLevel:
+      Type: String
+      Default: ERROR
+      AllowedValues:
+        - ALL
+        - ERROR
+        - FATAL
+        - OFF
+  StepFunctionName:
+    Description: The state function name.
+    Type: String
+    Default: PoC-IntegrationManager
+    
+  VeevaDestinationS3Bucket:
+    Description: The S3 bucket used by AppFlow to save data from Veeva
+    Type: String
+    Default: "veeva-poc-bucket2"     
+
+Resources:
+  LambdaFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: lambda/
+      Handler: app.lambdaHandler
+      Runtime: nodejs12.x
+      Tracing: Active
+      MemorySize: 2048
+      VpcConfig:
+        SecurityGroupIds: 
+          -  sg-0d2246440c74ae48a
+        SubnetIds: 
+          - subnet-0f831041e1454e013
+      Policies: # For PRODUCTION you may want to recify the permission boundries. At the moment the lambda function will have access to all S3 buckets and SQS queues. 
+        - AWSLambdaBasicExecutionRole
+        - SecretsManagerReadWrite
+        - AmazonS3FullAccess
+        - AmazonSQSFullAccess
+        - AmazonAthenaFullAccess
+      Timeout: 240
+      
+  # Definition of our AWS Step Function. The actual ASL is extracted in statemachine/RealWorldExample.asl.json file.          
+  StateMachine:
+    Type: AWS::Serverless::StateMachine
+    DependsOn: ProcessingStateMachineLogGroup
+    Properties:
+      Name: !Sub ${StepFunctionName}
+      DefinitionUri: statemachine/VeevaPoC.asl.json
+      DefinitionSubstitutions:
+        LambdaFunctionArn: !GetAtt LambdaFunction.Arn
+      Type: "STANDARD"  
+      Logging:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt ProcessingStateMachineLogGroup.Arn
+              
+        IncludeExecutionData: false
+        Level: !Ref CloudWatchLogLevel 
+      Role: !GetAtt StatesExecutionRole.Arn            
+      
+  # Execution Role to allow Step Function to InvokeLambda, Log data into CloudWatch, publish events in EvnetBridge          
+  StatesExecutionRole:
+    DependsOn: ProcessingStateMachineLogGroup
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+                - !Sub states.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"   
+      Policies:
+        - PolicyName: StatesLoggingPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+                
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Join [ ":*", [!GetAtt LambdaFunction.Arn, ""]]
+                
+  # Define CloudWatch Log Group for State execution logs
+  ProcessingStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "stepfunctions/${StepFunctionName}"                
+      
+  LoggingBucket:
+    Type: "AWS::S3::Bucket"
+    
+  BucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket: !Ref LoggingBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: "cloudtrail.amazonaws.com"
+          Action: "s3:GetBucketAcl"
+          Resource: !Sub "arn:aws:s3:::${LoggingBucket}"
+        - Effect: Allow
+          Principal:
+            Service: "cloudtrail.amazonaws.com"
+          Action: "s3:PutObject"
+          Resource: !Sub "arn:aws:s3:::${LoggingBucket}/AWSLogs/${AWS::AccountId}/*"
+          Condition:
+            StringEquals:
+              "s3:x-amz-acl": "bucket-owner-full-control"
+
+  SourceBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref VeevaDestinationS3Bucket
+    
+  CloudTrail:
+    Type: "AWS::CloudTrail::Trail"
+    DependsOn:
+      - BucketPolicy
+    Properties:
+      IsLogging: true
+      S3BucketName: !Ref LoggingBucket
+      EventSelectors:
+        - DataResources:
+            - Type: "AWS::S3::Object"
+              Values:
+                - "arn:aws:s3:::"  # log data events for all S3 buckets
+                - !Sub "${SourceBucket.Arn}/"  # log data events for the S3 bucket defined above
+          IncludeManagementEvents: true
+          ReadWriteType: WriteOnly
+
+  EventRule: 
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: "EventRule"
+      State: "ENABLED"
+      EventPattern: 
+        source: 
+          - "aws.s3"
+        detail: 
+          eventName: 
+            - "PutObject"
+          requestParameters:
+            bucketName: 
+              - !Ref SourceBucket
+
+      Targets: 
+        - 
+          Id: !Ref StepFunctionName
+          Arn: !GetAtt StateMachine.Arn
+          RoleArn: !GetAtt EventsExecutionRole.Arn
+
+  EventsExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"   
+      Policies:
+        - PolicyName: Amazon_EventBridge_Invoke_Step_Functions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - states:StartExecution
+                Resource: !GetAtt StateMachine.Arn

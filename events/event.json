@@ -1,0 +1,63 @@
+{
+  "version": "0",
+  "id": "5afba001-7695-1e98-3264-263224ee6095",
+  "detail-type": "AWS API Call via CloudTrail",
+  "source": "aws.s3",
+  "account": "176341458743",
+  "time": "2021-09-01T18:54:48Z",
+  "region": "us-east-1",
+  "resources": [],
+  "detail": {
+    "eventVersion": "1.08",
+    "userIdentity": {
+      "type": "AWSService",
+      "invokedBy": "appflow.amazonaws.com"
+    },
+    "eventTime": "2021-09-01T18:54:48Z",
+    "eventSource": "s3.amazonaws.com",
+    "eventName": "PutObject",
+    "awsRegion": "us-east-1",
+    "sourceIPAddress": "appflow.amazonaws.com",
+    "userAgent": "appflow.amazonaws.com",
+    "requestParameters": {
+      "bucketName": "veeva-poc-bucket",
+      "x-amz-server-side-encryption-aws-kms-key-id": "arn:aws:kms:us-east-1:176341458743:key/5a58343b-4137-4b24-a67f-c31ee0095584",
+      "Host": "veeva-poc-bucket.s3.amazonaws.com",
+      "x-amz-server-side-encryption": "aws:kms",
+      "key": "veevaPoC/5cafb08f-602f-44b3-b6c0-506bb5b1f337/-1327704789-2021-09-01T18:54:48"
+    },
+    "responseElements": {
+      "x-amz-server-side-encryption": "aws:kms",
+      "x-amz-server-side-encryption-aws-kms-key-id": "arn:aws:kms:us-east-1:176341458743:key/5a58343b-4137-4b24-a67f-c31ee0095584"
+    },
+    "additionalEventData": {
+      "SignatureVersion": "SigV4",
+      "CipherSuite": "ECDHE-RSA-AES128-GCM-SHA256",
+      "bytesTransferredIn": 394,
+      "SSEApplied": "SSE_KMS",
+      "AuthenticationMethod": "AuthHeader",
+      "x-amz-id-2": "hbOTE/N3iho29c5j45zEI/ArJUXSRy3Q9yXb/8pyMZwpm/MS8oIrb7C5/3L3VsLG9bvL0dBT1xY=",
+      "bytesTransferredOut": 0
+    },
+    "requestID": "RHS6DXGM5QW7AJC2",
+    "eventID": "86d1f156-e0ef-4972-9616-3f31f0437934",
+    "readOnly": false,
+    "resources": [
+      {
+        "type": "AWS::S3::Object",
+        "ARN": "arn:aws:s3:::veeva-poc-bucket/veevaPoC/5cafb08f-602f-44b3-b6c0-506bb5b1f337/-1327704789-2021-09-01T18:54:48"
+      },
+      {
+        "accountId": "176341458743",
+        "type": "AWS::S3::Bucket",
+        "ARN": "arn:aws:s3:::veeva-poc-bucket"
+      }
+    ],
+    "eventType": "AwsApiCall",
+    "managementEvent": false,
+    "recipientAccountId": "176341458743",
+    "sharedEventID": "16cbf482-d10e-4691-bb60-76db03b2d4b4",
+    "vpcEndpointId": "vpce-0b0d3d5c49d71ea2b",
+    "eventCategory": "Data"
+  }
+}

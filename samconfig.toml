@@ -1,0 +1,10 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "VeevaPoC2"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1nsra1z6oe0en"
+s3_prefix = "VeevaPoC2"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "CloudWatchLogLevel=\"ERROR\" StepFunctionName=\"Veeva-PoC\" VeevaDestinationS3Bucket=\"veeva-poc-bucket2\""
