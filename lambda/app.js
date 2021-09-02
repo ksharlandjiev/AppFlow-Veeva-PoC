@@ -1,6 +1,7 @@
 const aws = require('aws-sdk');
 const s3 = new aws.S3({ apiVersion: '2006-03-01' });
 const athena = require("athena-express");
+
 const awsCredentials = {
     region: "us-east-1"
 };
@@ -47,20 +48,38 @@ exports.lambdaHandler = async (event, context) => {
             });
 
             var sql = "SELECT * FROM \"appflow-datalake-demo\".\"salesforce_patient_s3\" WHERE patientid__c IN ("+ "'"+Object.keys(PatientData).join("','")+"'" +")";
-            console.log(sql)
             var AthenaResult = await athenaExpress.query(sql);
 
             AthenaResult.Items.forEach( (v)  => {
                 if (v != null && v.patientid__c) {
-                    PatientData[v.patientid__c] = {
-                            ...PatientData[v.patientid__c],
-                            "sfdc": v
+                    if (PatientData[v.patientid__c] && PatientData[v.patientid__c]["veeva"]) {
+                        v["is_fully_vacinated__c"] = (PatientData[v.patientid__c]["veeva"]["Vaccination"].length>=2)
+                        v["first_vaccine_applied__c"] = (PatientData[v.patientid__c]["veeva"]["Vaccination"].length>=1)
+                        v["second_vaccine_applied__c"] = (PatientData[v.patientid__c]["veeva"]["Vaccination"].length>=2)
+
+                        PatientData[v.patientid__c]["veeva"]["Vaccination"].forEach( (k, i) => {
+                            v["vaccine_date"+(i+1)+"__c"] = k.date;
+                        }) 
                     }
+                    PatientData[v.patientid__c] = v
                 }
             });
+            
+            let dstKey = "aggregated/"+event.id+".json";
 
-
-            response = PatientData;
+            s3.putObject({
+                Bucket: s3Details.bucketName,
+                Key: dstKey,
+                Body: JSON.stringify(PatientData),
+                ContentType: "application/json"
+               }, (err, data) => {
+               err ? reject(err): resolve(data);
+            }).promise();
+            
+            response = {
+                Bucket: s3Details.bucketName,
+                Key: dstKey,
+            };
 
 
             
@@ -78,3 +97,4 @@ exports.lambdaHandler = async (event, context) => {
 
     return response
 };
+

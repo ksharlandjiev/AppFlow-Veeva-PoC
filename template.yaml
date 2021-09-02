@@ -22,12 +22,17 @@ Parameters:
   StepFunctionName:
     Description: The state function name.
     Type: String
-    Default: PoC-IntegrationManager
+    Default: VeevaPoC2
     
   VeevaDestinationS3Bucket:
     Description: The S3 bucket used by AppFlow to save data from Veeva
     Type: String
-    Default: "veeva-poc-bucket2"     
+    Default: "veeva-poc-bucket2"
+
+  AppFlowName:
+    Description: The S3 bucket used by AppFlow to save data from Veeva
+    Type: String
+    Default: "VeevaPoC2" 
 
 Resources:
   LambdaFunction:
@@ -152,13 +157,13 @@ Resources:
       - BucketPolicy
     Properties:
       IsLogging: true
-      S3BucketName: !Ref LoggingBucket
+      S3BucketName: !Ref LoggingBucket 
       EventSelectors:
         - DataResources:
             - Type: "AWS::S3::Object"
               Values:
                 - "arn:aws:s3:::"  # log data events for all S3 buckets
-                - !Sub "${SourceBucket.Arn}/"  # log data events for the S3 bucket defined above
+                - !Sub "${SourceBucket.Arn}/${AppFlowName}" # log data events for the S3 bucket defined above
           IncludeManagementEvents: true
           ReadWriteType: WriteOnly
 
