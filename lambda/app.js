@@ -76,14 +76,12 @@ exports.lambdaHandler = async (event, context) => {
                 ACL: "bucket-owner-full-control"
                };
 
-               response = await s3.putObject(putObjectParams).promise()
+            await s3.putObject(putObjectParams).promise()
             
-            // response = {
-            //     Bucket: s3Details.bucketName,
-            //     Key: dstKey,
-            // };
-
-
+            response = {
+                Bucket: s3Details.bucketName,
+                Key: dstKey,
+            };
             
         } catch (err) {
             console.log(err);
