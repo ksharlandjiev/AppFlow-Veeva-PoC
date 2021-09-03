@@ -2,13 +2,17 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
   VeevaPoC
-
   Sample SAM Template for VeevaPoC
   
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
     Timeout: 300
+    Environment:
+      Variables:
+        GlueCatalogTable: salesforce_patient_s3   
+        GlueCatalogDatabase: appflow-datalake-demo
+        GlueTableKey: patientid__c
 
 Parameters:
   CloudWatchLogLevel:

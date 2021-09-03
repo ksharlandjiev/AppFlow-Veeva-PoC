@@ -12,6 +12,9 @@ const athenaExpressConfig = { aws: aws, ignoreEmpty: false }; //configuring athe
 const athenaExpress = new athena(athenaExpressConfig);
 
 let response;
+const tableName = process.env.GlueCatalogTable;
+const dbName = process.env.GlueCatalogDatabase;
+const tableKey = process.env.GlueTableKey;
 
 /**
  *
@@ -47,7 +50,7 @@ exports.lambdaHandler = async (event, context) => {
                 }
             });
 
-            var sql = "SELECT * FROM \"appflow-datalake-demo\".\"salesforce_patient_s3\" WHERE patientid__c IN ("+ "'"+Object.keys(PatientData).join("','")+"'" +")";
+            var sql = "SELECT * FROM \""+dbName+"\".\""+tableName+"\" WHERE "+tableKey+" IN ("+ "'"+Object.keys(PatientData).join("','")+"'" +")";
             var AthenaResult = await athenaExpress.query(sql);
 
             AthenaResult.Items.forEach( (v)  => {
