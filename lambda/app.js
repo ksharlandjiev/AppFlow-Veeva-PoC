@@ -66,20 +66,22 @@ exports.lambdaHandler = async (event, context) => {
             });
             
             let dstKey = "aggregated/"+event.id+".json";
+            console.log(JSON.stringify(PatientData));
 
-            s3.putObject({
+            const putObjectParams = {
                 Bucket: s3Details.bucketName,
                 Key: dstKey,
                 Body: JSON.stringify(PatientData),
-                ContentType: "application/json"
-               }, (err, data) => {
-               err ? reject(err): resolve(data);
-            }).promise();
+                ContentType: "application/json",
+                ACL: "bucket-owner-full-control"
+               };
+
+               response = await s3.putObject(putObjectParams).promise()
             
-            response = {
-                Bucket: s3Details.bucketName,
-                Key: dstKey,
-            };
+            // response = {
+            //     Bucket: s3Details.bucketName,
+            //     Key: dstKey,
+            // };
 
 
             

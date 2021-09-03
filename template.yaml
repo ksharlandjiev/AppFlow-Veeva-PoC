@@ -29,10 +29,15 @@ Parameters:
     Type: String
     Default: "veeva-poc-bucket2"
 
-  AppFlowName:
-    Description: The S3 bucket used by AppFlow to save data from Veeva
+  VeevaAppFlowName:
+    Description: The name of the AppFlow Flow to ingest data from veeva
     Type: String
     Default: "VeevaPoC2" 
+
+  AppFlowVeevaConnectorName:
+    Description: The name of the veeva connector
+    Type: String
+    Default: "veeva" 
 
 Resources:
   LambdaFunction:
@@ -163,7 +168,7 @@ Resources:
             - Type: "AWS::S3::Object"
               Values:
                 - "arn:aws:s3:::"  # log data events for all S3 buckets
-                - !Sub "${SourceBucket.Arn}/${AppFlowName}" # log data events for the S3 bucket defined above
+                - !Sub "${SourceBucket.Arn}/${VeevaAppFlowName}" # log data events for the S3 bucket defined above
           IncludeManagementEvents: true
           ReadWriteType: WriteOnly
 
@@ -209,3 +214,55 @@ Resources:
                 Action: 
                   - states:StartExecution
                 Resource: !GetAtt StateMachine.Arn
+
+  AppFlowVeeva:               
+    Type: AWS::AppFlow::Flow
+    Properties: 
+      Description: String
+      DestinationFlowConfigList:
+      - ConnectorType: S3
+        DestinationConnectorProperties:
+          S3:
+            BucketName: !Ref VeevaDestinationS3Bucket
+            S3OutputFormatConfig:
+              FileType: JSON
+      FlowName: !Ref VeevaAppFlowName
+      KMSArn: "arn:aws:kms:us-east-1:176341458743:key/5a58343b-4137-4b24-a67f-c31ee0095584"
+      SourceFlowConfig: 
+          ConnectorProfileName: !Ref AppFlowVeevaConnectorName
+          ConnectorType: "Veeva" 
+          SourceConnectorProperties:
+              Veeva: 
+                DocumentType: "Reference"
+                Object: "documents/types/reference__c"
+      Tasks:
+      - ConnectorOperator:
+          Veeva: PROJECTION
+        SourceFields:
+        - id
+        - reference_source__c
+        TaskType: Filter
+      - ConnectorOperator:
+          Veeva: NO_OP
+        DestinationField: id
+        SourceFields:
+        - id
+        TaskProperties:
+        - Key: DESTINATION_DATA_TYPE
+          Value: id
+        - Key: SOURCE_DATA_TYPE
+          Value: id
+        TaskType: Map
+      - ConnectorOperator:
+          Veeva: NO_OP
+        DestinationField: reference_source__c
+        SourceFields:
+        - reference_source__c
+        TaskProperties:
+          - Key: DESTINATION_DATA_TYPE 
+            Value: String
+          - Key: SOURCE_DATA_TYPE
+            Value:  String
+        TaskType: Map
+      TriggerConfig:
+        TriggerType: OnDemand
