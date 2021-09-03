@@ -1,37 +1,7 @@
 {
   "Comment": "A Hello World example of the Amazon States Language using a Pass state",
-  "StartAt": "SetContext",
+  "StartAt": "Lambda Invoke",
   "States": {
-    "SetContext": {
-      "Type": "Pass",
-      "Parameters": {
-        "routes": [
-          {
-            "from": {
-              "uri": "direct:start",
-              "steps": [
-                {
-                  "to": {
-                    "uri": "aws2-s3",
-                    "parameters": {
-                      "bucketNameOrArn.$": "$.detail.requestParameters.bucketName",
-                      "operation": "GetObject",
-                      "keyName.$": "$.detail.requestParameters.key",
-                      "useDefaultCredentialsProvider": true,
-                      "region": "us-east-1"
-                    }
-                  }
-                },
-                {
-                  "to": "log:details?ShowAll=true"
-                }
-              ]
-            }
-          }
-        ]
-      },
-      "Next": "Lambda Invoke"
-    },
     "Lambda Invoke": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
@@ -52,9 +22,6 @@
         }
       ],
       "End": true,
-      "ResultSelector": {
-        "Payload.$": "States.StringToJson($.Payload)"
-      },
       "OutputPath": "$.Payload"
     }
   }
