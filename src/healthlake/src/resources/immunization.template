@@ -1,0 +1,30 @@
+{
+    "resourceType": "Immunization",
+    "id": "f2385ab3-4edc-98d5-dd1a-67e9cd292e61",
+    "meta": {
+      "profile": [
+        "http://hl7.org/fhir/us/core/StructureDefinition/us-core-immunization"
+      ]
+    },
+    "status": "completed",
+    "vaccineCode": {
+      "coding": [
+        {
+          "system": "http://hl7.org/fhir/sid/cvx",
+          "code": "207"
+        }
+      ]
+    },
+    "patient": {
+      "reference": "urn:uuid:$patientid"
+    },
+    "encounter": {
+      "reference": "urn:uuid:3372ab20-9ed4-6379-fff7-c4d7bddf6998"
+    },
+    "occurrenceDateTime": "$immunizationdate",
+    "primarySource": true,
+    "location": {
+      "reference": "Location?identifier=https://github.com/synthetichealth/synthea|f2d687bd-6c82-3987-82e2-26154dc019df",
+      "display": "Quincy Outpatient Clinic"
+    }
+}

@@ -8,11 +8,6 @@ Description: >
 Globals:
   Function:
     Timeout: 300
-    Environment:
-      Variables:
-        GlueCatalogTable: salesforce_patient_s3   
-        GlueCatalogDatabase: appflow-datalake-demo
-        GlueTableKey: patientid__c
 
 Parameters:
   CloudWatchLogLevel:
@@ -44,36 +39,59 @@ Parameters:
     Default: "veeva" 
 
 Resources:
-  LambdaFunction:
+  AppFlowVeevaLambdaFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
-      CodeUri: lambda/
+      CodeUri: src/veeva/
       Handler: app.lambdaHandler
       Runtime: nodejs12.x
       Tracing: Active
+      Environment:
+        Variables:
+          GlueCatalogTable: salesforce_patient_s3   
+          GlueCatalogDatabase: appflow-datalake-demo
+          GlueTableKey: patientid__c      
       MemorySize: 2048
-      VpcConfig:
-        SecurityGroupIds: 
-          -  sg-0d2246440c74ae48a
-        SubnetIds: 
-          - subnet-0f831041e1454e013
       Policies: # For PRODUCTION you may want to recify the permission boundries. At the moment the lambda function will have access to all S3 buckets and SQS queues. 
         - AWSLambdaBasicExecutionRole
-        - SecretsManagerReadWrite
         - AmazonS3FullAccess
-        - AmazonSQSFullAccess
-        - AmazonAthenaFullAccess
-      Timeout: 240
+      Timeout: 300
       
+  AppFlowHealthlakeResource:
+      Type: AWS::Serverless::Function
+      Properties:
+        Handler: src/healthlake/com.amazonaws.samples.AppFlowDataHandler::handleRequest
+        Runtime: java11
+        MemorySize: 512
+        Timeout: 300
+        Tracing: Active
+        Environment:
+          Variables:
+            SERVICE_NAME: AppFlowDataHandler
+            HL_ENDPOINT: https://healthlake.us-east-1.amazonaws.com/datastore/e381924cd2549ed29646ba42a1d376f3/r4/
+
+        Policies:
+          Statement:
+            - Effect: Allow
+              Action:
+                - 's3:GetObject'
+              Resource:
+                - 'arn:aws:s3:::*'
+            - Effect: Allow
+              Action:
+                - "healthlake:*"
+              Resource:
+                - '*'
+
   # Definition of our AWS Step Function. The actual ASL is extracted in statemachine/RealWorldExample.asl.json file.          
   StateMachine:
     Type: AWS::Serverless::StateMachine
     DependsOn: ProcessingStateMachineLogGroup
     Properties:
       Name: !Sub ${StepFunctionName}
-      DefinitionUri: statemachine/VeevaPoC.asl.json
+      DefinitionUri: src/statemachine/VeevaPoC.asl.json
       DefinitionSubstitutions:
-        LambdaFunctionArn: !GetAtt LambdaFunction.Arn
+        LambdaFunctionArn: !GetAtt AppFlowVeevaLambdaFunction.Arn
       Type: "STANDARD"  
       Logging:
         Destinations:
@@ -123,7 +141,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - lambda:InvokeFunction
-                Resource: !Join [ ":*", [!GetAtt LambdaFunction.Arn, ""]]
+                Resource: !Join [ ":*", [!GetAtt AppFlowVeevaLambdaFunction.Arn, ""]]
                 
   # Define CloudWatch Log Group for State execution logs
   ProcessingStateMachineLogGroup:
