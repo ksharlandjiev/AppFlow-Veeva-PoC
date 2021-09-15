@@ -58,7 +58,7 @@ Resources:
         - AmazonAthenaFullAccess
       Timeout: 300
       
-  AppFlowHealthlakeResource:
+  AppFlowHealthlakeLambdaFunction:
       Type: AWS::Serverless::Function
       Properties:
         Handler: com.amazonaws.samples.AppFlowDataHandler::handleRequest
@@ -93,7 +93,9 @@ Resources:
       Name: !Sub ${StepFunctionName}
       DefinitionUri: src/statemachine/VeevaPoC.asl.json
       DefinitionSubstitutions:
-        LambdaFunctionArn: !GetAtt AppFlowVeevaLambdaFunction.Arn
+        VeevaLambdaFunctionArn: !GetAtt AppFlowVeevaLambdaFunction.Arn
+        HLLambdaFunctionArn: !GetAtt AppFlowHealthlakeLambdaFunction.Arn
+
       Type: "STANDARD"  
       Logging:
         Destinations:
@@ -144,6 +146,10 @@ Resources:
                 Action:
                   - lambda:InvokeFunction
                 Resource: !Join [ ":*", [!GetAtt AppFlowVeevaLambdaFunction.Arn, ""]]
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Join [ ":*", [!GetAtt AppFlowHealthlakeLambdaFunction.Arn, ""]]                
                 
   # Define CloudWatch Log Group for State execution logs
   ProcessingStateMachineLogGroup:

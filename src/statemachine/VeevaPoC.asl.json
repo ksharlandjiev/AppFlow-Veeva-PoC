@@ -1,13 +1,36 @@
 {
   "Comment": "A Hello World example of the Amazon States Language using a Pass state",
-  "StartAt": "Lambda Invoke",
+  "StartAt": "Salesforce Veeva ETL",
   "States": {
-    "Lambda Invoke": {
+    "Salesforce Veeva ETL": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
         "Payload.$": "$",
-        "FunctionName": "${LambdaFunctionArn}:$LATEST"
+        "FunctionName": "${VeevaLambdaFunctionArn}:$LATEST"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "OutputPath": "$.Payload",
+      "Next": "Import into Amazon HealthLake"
+    },
+    "Import into Amazon HealthLake": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "OutputPath": "$.Payload",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "${HLLambdaFunctionArn}:$LATEST"
       },
       "Retry": [
         {
@@ -22,7 +45,9 @@
         }
       ],
       "End": true,
-      "OutputPath": "$.Payload"
+      "ResultSelector": {
+        "Payload.$": "States.StringToJson($.Payload)"
+      }
     }
   }
 }
