@@ -61,7 +61,8 @@ Resources:
   AppFlowHealthlakeResource:
       Type: AWS::Serverless::Function
       Properties:
-        CodeUri: src/healthlake/target/appflow-hl-demo-1.0-SNAPSHOT.jar
+        Handler: com.amazonaws.samples.AppFlowDataHandler::handleRequest
+        CodeUri: src/healthlake/
         Runtime: java11
         MemorySize: 512
         Timeout: 300
