@@ -39,56 +39,52 @@ exports.lambdaHandler = async (event, context) => {
         try {
             const file = await s3.getObject(params).promise()
             const veevaMetadata = JSON.parse(file.Body.toString('utf-8'));
-            var PatientData = {};
+            var patientData = {};
             veevaMetadata.data.forEach( (v)  => {
                 if (v != null && v.reference_source__c) {
                     var toJson = JSON.parse(v.reference_source__c.toString('utf-8'));
 
-                    PatientData[toJson["PatientID"]] = {
+                    patientData[toJson["PatientID"]] = {
                             "veeva": toJson
                     }
                 }
             });
 
-            var sql = "SELECT * FROM \""+dbName+"\".\""+tableName+"\" WHERE "+tableKey+" IN ("+ "'"+Object.keys(PatientData).join("','")+"'" +")";
+            var sql = "SELECT * FROM \""+dbName+"\".\""+tableName+"\" WHERE "+tableKey+" IN ("+ "'"+Object.keys(patientData).join("','")+"'" +")";
             var AthenaResult = await athenaExpress.query(sql);
 
             AthenaResult.Items.forEach( (v)  => {
                 if (v != null && v.patientid__c) {
-                    if (PatientData[v.patientid__c] && PatientData[v.patientid__c]["veeva"]) {
-                        v["is_fully_vacinated__c"] = (PatientData[v.patientid__c]["veeva"]["Vaccination"].length>=2)
-                        v["first_vaccine_applied__c"] = (PatientData[v.patientid__c]["veeva"]["Vaccination"].length>=1)
-                        v["second_vaccine_applied__c"] = (PatientData[v.patientid__c]["veeva"]["Vaccination"].length>=2)
+                    if (patientData[v.patientid__c] && patientData[v.patientid__c]["veeva"]) {
+                        v["is_fully_vacinated__c"] = (patientData[v.patientid__c]["veeva"]["Vaccination"].length>=2)
+                        v["first_vaccine_applied__c"] = (patientData[v.patientid__c]["veeva"]["Vaccination"].length>=1)
+                        v["second_vaccine_applied__c"] = (patientData[v.patientid__c]["veeva"]["Vaccination"].length>=2)
 
-                        PatientData[v.patientid__c]["veeva"]["Vaccination"].forEach( (k, i) => {
+                        patientData[v.patientid__c]["veeva"]["Vaccination"].forEach( (k, i) => {
                             v["vaccine_date"+(i+1)+"__c"] = k.date;
                         }) 
                     }
-                    PatientData[v.patientid__c] = v
+                    patientData[v.patientid__c] = v
                 }
             });
-            
-            let dstKey = "aggregated/"+event.id+".json";
-            console.log(JSON.stringify(PatientData));
-
-            const putObjectParams = {
+            const dstKey = "aggregated/"+event.id+".json";
+            var putObjectParams = {
                 Bucket: s3Details.bucketName,
                 Key: dstKey,
-                Body: JSON.stringify(PatientData),
+                Body: Object.keys(patientData).map(function(k){return patientData[k]}),
                 ContentType: "application/json",
                 ACL: "bucket-owner-full-control"
                };
 
             await s3.putObject(putObjectParams).promise()
-            
             response = {
                 Bucket: s3Details.bucketName,
                 Key: dstKey,
-            };
+            };   
             
         } catch (err) {
             console.log(err);
-            const message = `Error getting object ${key} from bucket ${bucket}. Make sure they exist and your bucket is in the same region as this function.`;
+            const message = `Error getting object ${s3Details.key} from bucket ${s3Details.bucketName}. Make sure they exist and your bucket is in the same region as this function.`;
             console.log(message);
             throw new Error(message);
         }        
