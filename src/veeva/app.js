@@ -3,7 +3,7 @@ const s3 = new aws.S3({ apiVersion: '2006-03-01' });
 const athena = require("athena-express");
 
 const awsCredentials = {
-    region: "us-east-1"
+    region: process.env.AWS_REGION || "us-east-1"
 };
 aws.config.update(awsCredentials);
 
@@ -71,7 +71,7 @@ exports.lambdaHandler = async (event, context) => {
             var putObjectParams = {
                 Bucket: s3Details.bucketName,
                 Key: dstKey,
-                Body: Object.keys(patientData).map(function(k){return patientData[k]}),
+                Body: Object.keys(patientData).map(function(k){return JSON.stringify(patientData[k])}).join("\r\n"),
                 ContentType: "application/json",
                 ACL: "bucket-owner-full-control"
                };

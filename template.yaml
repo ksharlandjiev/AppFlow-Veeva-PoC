@@ -38,6 +38,21 @@ Parameters:
     Type: String
     Default: "veeva" 
 
+  AppFlowSalesforcePushAppFlowName:
+    Description: The name of the AppFlow Flow to update data in sfdc
+    Type: String
+    Default: "s3-to-sfdc-update-patient-data-json"
+
+  AppFlowSalesforceConnectorName:
+    Description: The name of the salesforce connector
+    Type: String
+    Default: "patient-data" 
+
+  HealthLakeEndpoint: 
+    Description: The public endipoint for Amazon Healthlake
+    Type: String
+    Default: "https://healthlake.us-east-1.amazonaws.com/datastore/e381924cd2549ed29646ba42a1d376f3/r4/"    
+
 Resources:
   AppFlowVeevaLambdaFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
@@ -57,7 +72,24 @@ Resources:
         - AmazonS3FullAccess
         - AmazonAthenaFullAccess
       Timeout: 300
-      
+
+  AppFlowTriggerFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: src/appflow/
+      Handler: app.lambdaHandler
+      Runtime: nodejs12.x
+      Tracing: Active
+      Environment:
+        Variables:
+          FLOW_NAME: !Ref AppFlowSalesforcePushAppFlowName   
+  
+      MemorySize: 2048
+      Policies: # For PRODUCTION you may want to recify the permission boundries. At the moment the lambda function will have access to all S3 buckets and SQS queues. 
+        - AWSLambdaBasicExecutionRole
+        - AmazonAppFlowFullAccess
+      Timeout: 300
+
   AppFlowHealthlakeLambdaFunction:
       Type: AWS::Serverless::Function
       Properties:
@@ -70,7 +102,7 @@ Resources:
         Environment:
           Variables:
             SERVICE_NAME: AppFlowDataHandler
-            HL_ENDPOINT: https://healthlake.us-east-1.amazonaws.com/datastore/e381924cd2549ed29646ba42a1d376f3/r4/
+            HL_ENDPOINT: !Ref HealthLakeEndpoint
 
         Policies:
           Statement:
@@ -85,6 +117,7 @@ Resources:
               Resource:
                 - '*'
 
+
   # Definition of our AWS Step Function. The actual ASL is extracted in statemachine/RealWorldExample.asl.json file.          
   StateMachine:
     Type: AWS::Serverless::StateMachine
@@ -95,6 +128,7 @@ Resources:
       DefinitionSubstitutions:
         VeevaLambdaFunctionArn: !GetAtt AppFlowVeevaLambdaFunction.Arn
         HLLambdaFunctionArn: !GetAtt AppFlowHealthlakeLambdaFunction.Arn
+        AppFlowTriggerLambda: !GetAtt AppFlowTriggerFunction.Arn
 
       Type: "STANDARD"  
       Logging:
@@ -150,6 +184,10 @@ Resources:
                 Action:
                   - lambda:InvokeFunction
                 Resource: !Join [ ":*", [!GetAtt AppFlowHealthlakeLambdaFunction.Arn, ""]]                
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Join [ ":*", [!GetAtt AppFlowTriggerFunction.Arn, ""]]                  
                 
   # Define CloudWatch Log Group for State execution logs
   ProcessingStateMachineLogGroup:
@@ -327,7 +365,86 @@ Resources:
             StringEquals:
               kms:CallerAccount: !Sub "${AWS::AccountId}"
               kms:ViaService: !Sub "secretsmanager.${AWS::Region}.amazonaws.com"
-           
+
+  # AppFlowSalesforcePush: 
+  #   DependsOn: SourceBucket
+  #   Type: AWS::AppFlow::Flow
+  #   Properties: 
+  #     FlowName: !Ref AppFlowSalesforcePushAppFlowName
+  #     TriggerConfig:
+  #       TriggerType: OnDemand
+  #     SourceFlowConfig:
+  #       ConnectorType: S3
+  #       SourceConnectorProperties:
+  #         S3:
+  #           BucketName: !Ref SourceBucket
+  #           BucketPrefix: aggregated
+  #           S3InputFormatConfig:
+  #             S3InputFileType: JSON
+  #     DestinationFlowConfigList:
+  #     - ConnectorType: Salesforce
+  #       ConnectorProfileName: !Ref AppFlowSalesforceConnectorName
+  #       DestinationConnectorProperties:
+  #         Salesforce:
+  #           Object: Patient__c
+  #           WriteOperationType: INSERT
+
+  #     Tasks:
+  #     - TaskType: Filter
+  #       SourceFields:
+  #       - first_vaccine_applied__c
+  #       - is_fully_vacinated__c
+  #       - second_vaccine_applied__c
+  #       - vaccine_date1__c
+  #       - vaccine_date2__c
+  #       ConnectorOperator:
+  #         S3: PROJECTION
+  #     - TaskType: Map
+  #       SourceFields:
+  #       - first_vaccine_applied__c
+  #       TaskProperties:
+  #         - Key: DESTINATION_DATA_TYPE
+  #           Value: boolean
+  #       DestinationField: First_Vaccine_Applied__c
+  #       ConnectorOperator:
+  #         S3: NO_OP
+  #     - TaskType: Map
+  #       SourceFields:
+  #       - is_fully_vacinated__c
+  #       TaskProperties:
+  #         - Key: DESTINATION_DATA_TYPE
+  #           Value: boolean
+  #       DestinationField: Is_Fully_Vacinated__c
+  #       ConnectorOperator:
+  #         S3: NO_OP
+  #     - TaskType: Map
+  #       SourceFields:
+  #       - second_vaccine_applied__c
+  #       TaskProperties:
+  #         - Key: DESTINATION_DATA_TYPE
+  #           Value: boolean
+  #       DestinationField: Second_Vaccine_Applied__c
+  #       ConnectorOperator:
+  #         S3: NO_OP
+  #     - TaskType: Map
+  #       SourceFields:
+  #       - vaccine_date1__c
+  #       TaskProperties:
+  #         - Key: DESTINATION_DATA_TYPE
+  #           Value: string
+  #       DestinationField: Vaccine_Date1__c
+  #       ConnectorOperator:
+  #         S3: NO_OP
+  #     - TaskType: Map
+  #       SourceFields:
+  #       - vaccine_date2__c
+  #       TaskProperties:
+  #         - Key: DESTINATION_DATA_TYPE
+  #           Value: string
+  #       DestinationField: Vaccine_Date2__c
+  #       ConnectorOperator:
+  #         S3: NO_OP
+
   AppFlowVeeva:
     DependsOn: SourceBucket
     Type: AWS::AppFlow::Flow

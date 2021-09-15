@@ -22,32 +22,70 @@
         }
       ],
       "OutputPath": "$.Payload",
-      "Next": "Import into Amazon HealthLake"
+      "Next": "Parallel"
     },
-    "Import into Amazon HealthLake": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "OutputPath": "$.Payload",
-      "Parameters": {
-        "Payload.$": "$",
-        "FunctionName": "${HLLambdaFunctionArn}:$LATEST"
-      },
-      "Retry": [
+    "Parallel": {
+      "Type": "Parallel",
+      "Branches": [
         {
-          "ErrorEquals": [
-            "Lambda.ServiceException",
-            "Lambda.AWSLambdaException",
-            "Lambda.SdkClientException"
-          ],
-          "IntervalSeconds": 2,
-          "MaxAttempts": 6,
-          "BackoffRate": 2
+          "StartAt": "Import into Amazon HealthLake",
+          "States": {
+            "Import into Amazon HealthLake": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "Payload.$": "$",
+                "FunctionName": "${HLLambdaFunctionArn}:$LATEST"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true,
+              "ResultSelector": {
+                "Payload.$": "States.StringToJson($.Payload)"
+              }
+            }
+          }
+        },
+        {
+          "StartAt": "Update Salesforce Records",
+          "States": {
+            "Update Salesforce Records": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "Payload.$": "$",
+                "FunctionName": "${AppFlowTriggerLambda}:$LATEST"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
         }
       ],
-      "End": true,
-      "ResultSelector": {
-        "Payload.$": "States.StringToJson($.Payload)"
-      }
+      "End": true
     }
   }
 }
