@@ -55,12 +55,13 @@ Resources:
       Policies: # For PRODUCTION you may want to recify the permission boundries. At the moment the lambda function will have access to all S3 buckets and SQS queues. 
         - AWSLambdaBasicExecutionRole
         - AmazonS3FullAccess
+        - AmazonAthenaFullAccess
       Timeout: 300
       
   AppFlowHealthlakeResource:
       Type: AWS::Serverless::Function
       Properties:
-        Handler: src/healthlake/com.amazonaws.samples.AppFlowDataHandler::handleRequest
+        CodeUri: src/healthlake/target/appflow-hl-demo-1.0-SNAPSHOT.jar
         Runtime: java11
         MemorySize: 512
         Timeout: 300
