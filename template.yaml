@@ -150,7 +150,6 @@ Resources:
         S3Targets:
           #  S3 bucket with the flights data
           - Path: !Sub "s3://${DatalakeBucket}/${AppFlowSalesForceFlowName}/"
-      TablePrefix: !Ref AppFlowSalesForceFlowName
       SchemaChangePolicy:
         UpdateBehavior: "UPDATE_IN_DATABASE"
         DeleteBehavior: "LOG"
