@@ -2,9 +2,10 @@ version = 0.1
 [default]
 [default.deploy]
 [default.deploy.parameters]
-stack_name = "VeevaPoC2"
-s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1nsra1z6oe0en"
-s3_prefix = "VeevaPoC2"
+stack_name = "bds"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1h5r3w204lxlo"
+s3_prefix = "bds"
 region = "us-east-1"
+profile = "appflow"
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "CloudWatchLogLevel=\"ERROR\" StepFunctionName=\"Veeva-PoC\" VeevaDestinationS3Bucket=\"veeva-poc-bucket2\""
+parameter_overrides = "CloudWatchLogLevel=\"ERROR\" AppFlowVeevaConnectorName=\"veeva\" AppFlowSalesforcePushAppFlowName=\"s3-to-sfdc-update-patient-data-json\" AppFlowSalesforceConnectorName=\"sfdc\" HealthLakeEndpoint=\"https://healthlake.us-east-1.amazonaws.com/datastore/1091763888909579e9ea8efac8df57eb/r4/\""

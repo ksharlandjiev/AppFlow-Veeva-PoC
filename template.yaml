@@ -1,8 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  VeevaPoC
-  Sample SAM Template for VeevaPoC
+  Helping customers break down data silos with AWS Integration services
   
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -18,20 +17,6 @@ Parameters:
         - ERROR
         - FATAL
         - OFF
-  StepFunctionName:
-    Description: The state function name.
-    Type: String
-    Default: VeevaPoC2
-    
-  VeevaDestinationS3Bucket:
-    Description: The S3 bucket used by AppFlow to save data from Veeva
-    Type: String
-    Default: "veeva-poc-bucket2"
-
-  VeevaAppFlowName:
-    Description: The name of the AppFlow Flow to ingest data from veeva
-    Type: String
-    Default: "VeevaPoC2" 
 
   AppFlowVeevaConnectorName:
     Description: The name of the veeva connector
@@ -39,21 +24,139 @@ Parameters:
     Default: "veeva" 
 
   AppFlowSalesforcePushAppFlowName:
-    Description: The name of the AppFlow Flow to update data in sfdc
+    Description: The name of the AppFlow Flow to update data in sfdc. Currently this flow needs to be manually created do to limitation in AppFlow CFN.
     Type: String
     Default: "s3-to-sfdc-update-patient-data-json"
 
   AppFlowSalesforceConnectorName:
     Description: The name of the salesforce connector
     Type: String
-    Default: "patient-data" 
+    Default: "sfdc" 
 
+  AppFlowSalesforceObject:
+    Description: The name of the salesforce object we will ingest with AppFlow
+    Type: String
+    Default: "Patient__c"     
+
+  AppFlowSalesForceFlowName: 
+    Description: Name of the flow to be used to pull data from Salesforce
+    Type: String
+    Default: "sfdc-to-s3"      
+    
   HealthLakeEndpoint: 
     Description: The public endipoint for Amazon Healthlake
     Type: String
-    Default: "https://healthlake.us-east-1.amazonaws.com/datastore/e381924cd2549ed29646ba42a1d376f3/r4/"    
+    Default: ""    
+
+  GlueDatabaseName:
+    Description: Name of the Glue database to create.
+    Type: String
+    Default: sfdc-data
+  # GlueTableName:
+  #   Type: String
+  #   Default: cfn-manual-table-flights-1
 
 Resources:
+
+  DatalakeBucket:
+    Type: "AWS::S3::Bucket"
+
+  AppFlowSFDCtoS3:
+    Type: AWS::AppFlow::Flow
+    Properties: 
+      Description: String
+      FlowName: !Ref AppFlowSalesForceFlowName
+      Description: 'Downloads data about patients from Salesforce into a raw S3 datalake'
+      TriggerConfig:
+        TriggerType: OnDemand
+      SourceFlowConfig:
+        ConnectorType: Salesforce
+        ConnectorProfileName: !Ref AppFlowSalesforceConnectorName
+        SourceConnectorProperties:
+          Salesforce:
+            Object: !Ref AppFlowSalesforceObject
+            EnableDynamicFieldUpdate: true
+            IncludeDeletedRecords: false
+      DestinationFlowConfigList:
+      - ConnectorType: S3
+        DestinationConnectorProperties:
+          S3:
+            BucketName: !Ref DatalakeBucket
+            S3OutputFormatConfig:
+              FileType: JSON
+              AggregationConfig:
+                aggregationType: None
+      Tasks:
+      - TaskType: Filter
+        SourceFields:
+        - Id
+        ConnectorOperator:
+          Salesforce: PROJECTION
+
+
+      - TaskType: Map_all
+        SourceFields: []
+        TaskProperties:
+        - Key: EXCLUDE_SOURCE_FIELDS_LIST
+          Value: '[]'
+        ConnectorOperator:
+          Salesforce: NO_OP
+
+# Create an AWS Glue database
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Ref GlueDatabaseName
+        Description: Database to hold tables for salesforce data
+#Create IAM Role assumed by the crawler. For demonstration, this role is given all permissions.
+  GlueRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "glue.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole      
+      Policies:
+        - PolicyName: !Sub "AWSGlueServiceRole-${AWS::StackName}"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Join [ "/*", [!GetAtt DatalakeBucket.Arn, ""]]
+
+  GlueCrawlerSalesforce:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Role: !GetAtt GlueRole.Arn
+      #Classifiers: none, use the default classifier
+      Description: AWS Glue crawler to crawl salesforce data
+      #Schedule: none, use default run-on-demand
+      DatabaseName: !Ref GlueDatabase
+      Targets:
+        S3Targets:
+          #  S3 bucket with the flights data
+          - Path: !Sub "s3://${DatalakeBucket}/${AppFlowSalesForceFlowName}/"
+      TablePrefix: !Ref AppFlowSalesForceFlowName
+      SchemaChangePolicy:
+        UpdateBehavior: "UPDATE_IN_DATABASE"
+        DeleteBehavior: "LOG"
+      Configuration: "{\"Version\":1.0,\"CrawlerOutput\":{\"Partitions\":{\"AddOrUpdateBehavior\":\"InheritFromTable\"},\"Tables\":{\"AddOrUpdateBehavior\":\"MergeNewColumns\"}}}"
+
+
   AppFlowVeevaLambdaFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
@@ -117,13 +220,12 @@ Resources:
               Resource:
                 - '*'
 
-
   # Definition of our AWS Step Function. The actual ASL is extracted in statemachine/RealWorldExample.asl.json file.          
   StateMachine:
     Type: AWS::Serverless::StateMachine
     DependsOn: ProcessingStateMachineLogGroup
     Properties:
-      Name: !Sub ${StepFunctionName}
+      Name: !Sub ${AWS::StackName}-ETL
       DefinitionUri: src/statemachine/VeevaPoC.asl.json
       DefinitionSubstitutions:
         VeevaLambdaFunctionArn: !GetAtt AppFlowVeevaLambdaFunction.Arn
@@ -193,7 +295,7 @@ Resources:
   ProcessingStateMachineLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "stepfunctions/${StepFunctionName}"                
+      LogGroupName: !Sub "stepfunctions/${AWS::StackName}-ETL"                
       
   LoggingBucket:
     Type: "AWS::S3::Bucket"
@@ -219,15 +321,10 @@ Resources:
             StringEquals:
               "s3:x-amz-acl": "bucket-owner-full-control"
 
-  SourceBucket:
-    Type: "AWS::S3::Bucket"
-    Properties:
-      BucketName: !Ref VeevaDestinationS3Bucket
-
-  SourceBucketPolicy:
+  DatalakeBucketPolicy:
     Type: "AWS::S3::BucketPolicy"
     Properties: 
-      Bucket: !Ref SourceBucket
+      Bucket: !Ref DatalakeBucket
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -242,8 +339,12 @@ Resources:
           - s3:GetBucketAcl
           - s3:PutObjectAcl
           Resource:
-          - !Sub arn:aws:s3:::${VeevaDestinationS3Bucket}
-          - !Sub arn:aws:s3:::${VeevaDestinationS3Bucket}/*      
+          - !GetAtt DatalakeBucket.Arn
+          - !Join
+            - ''
+            - - 'arn:aws:s3:::'
+              - !Ref DatalakeBucket
+              - /*      
     
   CloudTrail:
     Type: "AWS::CloudTrail::Trail"
@@ -257,7 +358,7 @@ Resources:
             - Type: "AWS::S3::Object"
               Values:
                 - "arn:aws:s3:::"  # log data events for all S3 buckets
-                - !Sub "${SourceBucket.Arn}/${VeevaAppFlowName}" # log data events for the S3 bucket defined above
+                - !Sub "${DatalakeBucket.Arn}/${AWS::StackName}" # log data events for the S3 bucket defined above
           IncludeManagementEvents: true
           ReadWriteType: WriteOnly
 
@@ -274,11 +375,11 @@ Resources:
             - "PutObject"
           requestParameters:
             bucketName: 
-              - !Ref SourceBucket
+              - !Ref DatalakeBucket
 
       Targets: 
         - 
-          Id: !Ref StepFunctionName
+          Id: !Sub ${AWS::StackName}-ETL
           Arn: !GetAtt StateMachine.Arn
           RoleArn: !GetAtt EventsExecutionRole.Arn
 
@@ -293,7 +394,7 @@ Resources:
               Service:
                 - events.amazonaws.com
             Action: "sts:AssumeRole"
-      Path: "/"   
+      Path: "/"
       Policies:
         - PolicyName: Amazon_EventBridge_Invoke_Step_Functions
           PolicyDocument:
@@ -311,7 +412,7 @@ Resources:
       PendingWindowInDays: 20
       KeyPolicy:
         Version: '2012-10-17'
-        Id: !Sub "${VeevaAppFlowName}-KMS"
+        Id: !Sub "${AWS::StackName}-KMS"
         Statement:
         - Sid: Enable IAM User Permissions
           Effect: Allow
@@ -367,7 +468,7 @@ Resources:
               kms:ViaService: !Sub "secretsmanager.${AWS::Region}.amazonaws.com"
 
   # AppFlowSalesforcePush: 
-  #   DependsOn: SourceBucket
+  #   DependsOn: DatalakeBucket
   #   Type: AWS::AppFlow::Flow
   #   Properties: 
   #     FlowName: !Ref AppFlowSalesforcePushAppFlowName
@@ -377,7 +478,7 @@ Resources:
   #       ConnectorType: S3
   #       SourceConnectorProperties:
   #         S3:
-  #           BucketName: !Ref SourceBucket
+  #           BucketName: !Ref DatalakeBucket
   #           BucketPrefix: aggregated
   #           S3InputFormatConfig:
   #             S3InputFileType: JSON
@@ -446,18 +547,19 @@ Resources:
   #         S3: NO_OP
 
   AppFlowVeeva:
-    DependsOn: SourceBucket
+    DependsOn: DatalakeBucket
     Type: AWS::AppFlow::Flow
     Properties: 
-      Description: String
+      FlowName: !Sub ${AWS::StackName}-veeva
+      Description: Flow to fetch data from Veeva and save into our S3 datalake.
       DestinationFlowConfigList:
       - ConnectorType: S3
         DestinationConnectorProperties:
           S3:
-            BucketName: !Ref VeevaDestinationS3Bucket
+            BucketName: !Ref DatalakeBucket
+            BucketPrefix: !Sub ${AWS::StackName}-veeva,
             S3OutputFormatConfig:
               FileType: JSON
-      FlowName: !Ref VeevaAppFlowName
       KMSArn: !GetAtt KSMKey.Arn
       SourceFlowConfig: 
           ConnectorProfileName: !Ref AppFlowVeevaConnectorName

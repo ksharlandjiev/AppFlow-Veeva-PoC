@@ -176,30 +176,9 @@ public class AppFlowDataHandler implements RequestHandler<Map<String, Object>, S
     request.setHttpMethod(HttpMethodName.POST);
     request.setEndpoint(URI.create(String.format("%s%s", healthLakeEndpoint, "Patient")));
     request.setContent(byteArrayInputStream);
-
-    AWS4Signer signer = new AWS4Signer();
-    signer.setRegionName(AWS_REGION);
-    signer.setServiceName("healthlake");
-
-    signer.sign(request, new AWSSessionCredentials() {
-      @Override
-      public String getSessionToken() {
-        return sessionToken;
-      }
-
-      @Override
-      public String getAWSAccessKeyId() {
-        return accesKey;
-      }
-
-      @Override
-      public String getAWSSecretKey() {
-        return secretKey;
-      }
-    });
+    request = this.signRequest(request);
 
     // Execute it and get the response...
-
     Response<String> rsp = new AmazonHttpClient(new ClientConfiguration())
         .requestExecutionBuilder()
         .executionContext(new ExecutionContext(true))
@@ -208,10 +187,8 @@ public class AppFlowDataHandler implements RequestHandler<Map<String, Object>, S
           @Override
           public String handle(HttpResponse response) throws Exception {
 
-            byte[] respContent = new byte[] {};
             InputStream inputStream = response.getContent();
             String result = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
-            // String respBody = new String(respContent);
             return result;
           }
 
@@ -227,11 +204,6 @@ public class AppFlowDataHandler implements RequestHandler<Map<String, Object>, S
 
   private void createImmunizationInHealthLake(String immunizationResource, Context context) {
     LambdaLogger logger = context.getLogger();
-
-    // logger.log("Access key : "+accesKey);
-
-    // logger.log("Secret : "+secretKey);
-
     logger.log("Resource body : " + immunizationResource);
 
     ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(immunizationResource.getBytes(StandardCharsets.UTF_8));
@@ -241,6 +213,32 @@ public class AppFlowDataHandler implements RequestHandler<Map<String, Object>, S
     request.setEndpoint(URI.create(String.format("%s%s", healthLakeEndpoint, "Immunization")));
     request.setContent(byteArrayInputStream);
 
+    request = this.signRequest(request);
+
+    // Execute it and get the response...
+    Response<String> rsp = new AmazonHttpClient(new ClientConfiguration())
+        .requestExecutionBuilder()
+        .executionContext(new ExecutionContext(true))
+        .request(request)
+        .execute(new HttpResponseHandler<String>() {
+          @Override
+          public String handle(HttpResponse response) throws Exception {
+            InputStream inputStream = response.getContent();
+            String result = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
+            return result;
+          }
+
+          @Override
+          public boolean needsConnectionLeftOpen() {
+            return false;
+          }
+        });
+    String awsResponse = rsp.getAwsResponse();
+    logger.log("The response " + awsResponse);
+
+  }
+
+  private Request<Void> signRequest(Request<Void> request) {
     AWS4Signer signer = new AWS4Signer();
     signer.setRegionName(AWS_REGION);
     signer.setServiceName("healthlake");
@@ -261,32 +259,7 @@ public class AppFlowDataHandler implements RequestHandler<Map<String, Object>, S
         return secretKey;
       }
     });
-
-    // Execute it and get the response...
-
-    Response<String> rsp = new AmazonHttpClient(new ClientConfiguration())
-        .requestExecutionBuilder()
-        .executionContext(new ExecutionContext(true))
-        .request(request)
-        .execute(new HttpResponseHandler<String>() {
-          @Override
-          public String handle(HttpResponse response) throws Exception {
-
-            InputStream inputStream = response.getContent();
-            String result = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
-            // String respBody = new String(respContent);
-            return result;
-
-          }
-
-          @Override
-          public boolean needsConnectionLeftOpen() {
-            return false;
-          }
-        });
-    String awsResponse = rsp.getAwsResponse();
-    logger.log("The response " + awsResponse);
-
+    return request;
   }
 
 }
