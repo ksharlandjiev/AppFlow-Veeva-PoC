@@ -51,6 +51,7 @@ exports.lambdaHandler = async (event, context) => {
             });
 
             var sql = "SELECT * FROM \""+dbName+"\".\""+tableName+"\" WHERE "+tableKey+" IN ("+ "'"+Object.keys(patientData).join("','")+"'" +")";
+            console.log(sql);
             var AthenaResult = await athenaExpress.query(sql);
 
             AthenaResult.Items.forEach( (v)  => {

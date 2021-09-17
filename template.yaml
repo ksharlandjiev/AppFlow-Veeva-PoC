@@ -41,7 +41,7 @@ Parameters:
   AppFlowSalesForceFlowName: 
     Description: Name of the flow to be used to pull data from Salesforce
     Type: String
-    Default: "sfdc-to-s3"      
+    Default: "sfdc_to_s3"      
     
   HealthLakeEndpoint: 
     Description: The public endipoint for Amazon Healthlake
@@ -51,16 +51,44 @@ Parameters:
   GlueDatabaseName:
     Description: Name of the Glue database to create.
     Type: String
-    Default: sfdc-data
-  # GlueTableName:
-  #   Type: String
-  #   Default: cfn-manual-table-flights-1
+    Default: sfdc_data
+    
+  GlueTableKey:
+    Description: Key to bind data between Veeva and SFDC
+    Type: String
+    Default: patientid__c
 
 Resources:
-
+# Create S3 Datalake
   DatalakeBucket:
     Type: "AWS::S3::Bucket"
+# Create S3 Datalake Bucket POlicy
+  DatalakeBucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties: 
+      Bucket: !Ref DatalakeBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: appflow.amazonaws.com
+          Action:
+          - s3:PutObject
+          - s3:AbortMultipartUpload
+          - s3:ListMultipartUploadParts
+          - s3:ListBucketMultipartUploads
+          - s3:GetBucketAcl
+          - s3:PutObjectAcl
+          Resource:
+          - !GetAtt DatalakeBucket.Arn
+          - !Join
+            - ''
+            - - 'arn:aws:s3:::'
+              - !Ref DatalakeBucket
+              - /*      
 
+# Create Amazon AppFlow to pull data from Salesforce
   AppFlowSFDCtoS3:
     Type: AWS::AppFlow::Flow
     Properties: 
@@ -92,7 +120,6 @@ Resources:
         - Id
         ConnectorOperator:
           Salesforce: PROJECTION
-
 
       - TaskType: Map_all
         SourceFields: []
@@ -138,6 +165,7 @@ Resources:
                   - s3:PutObject
                 Resource: !Join [ "/*", [!GetAtt DatalakeBucket.Arn, ""]]
 
+# Create an AWS Glue crawler to get schema from Salesforce data
   GlueCrawlerSalesforce:
     Type: AWS::Glue::Crawler
     Properties:
@@ -155,7 +183,7 @@ Resources:
         DeleteBehavior: "LOG"
       Configuration: "{\"Version\":1.0,\"CrawlerOutput\":{\"Partitions\":{\"AddOrUpdateBehavior\":\"InheritFromTable\"},\"Tables\":{\"AddOrUpdateBehavior\":\"MergeNewColumns\"}}}"
 
-
+# Create Lambda function to fetch data via Amazon Athena, enrich data between Veeva and Salseforce and save this on S3.
   AppFlowVeevaLambdaFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
@@ -165,8 +193,8 @@ Resources:
       Tracing: Active
       Environment:
         Variables:
-          GlueCatalogTable: salesforce_patient_s3   
-          GlueCatalogDatabase: appflow-datalake-demo
+          GlueCatalogTable: !Ref AppFlowSalesForceFlowName   
+          GlueCatalogDatabase: !Ref GlueDatabaseName
           GlueTableKey: patientid__c      
       MemorySize: 2048
       Policies: # For PRODUCTION you may want to recify the permission boundries. At the moment the lambda function will have access to all S3 buckets and SQS queues. 
@@ -174,7 +202,7 @@ Resources:
         - AmazonS3FullAccess
         - AmazonAthenaFullAccess
       Timeout: 300
-
+#Lambda function to start an amazon appflow flow
   AppFlowTriggerFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
@@ -185,13 +213,29 @@ Resources:
       Environment:
         Variables:
           FLOW_NAME: !Ref AppFlowSalesforcePushAppFlowName   
-  
       MemorySize: 2048
       Policies: # For PRODUCTION you may want to recify the permission boundries. At the moment the lambda function will have access to all S3 buckets and SQS queues. 
         - AWSLambdaBasicExecutionRole
         - AmazonAppFlowFullAccess
       Timeout: 300
 
+#Lambda function to start Glue crawler job
+  GlueCrawlerTriggerFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: src/glue/
+      Handler: app.lambdaHandler
+      Runtime: nodejs12.x
+      Tracing: Active
+      Environment:
+        Variables:
+          CRAWLER_NAME: !Ref GlueCrawlerSalesforce   
+      MemorySize: 2048
+      Policies: # For PRODUCTION you may want to recify the permission boundries. At the moment the lambda function will have access to all S3 buckets and SQS queues. 
+        - AWSGlueServiceRole
+      Timeout: 300
+
+# Create lambda function to transform json into FHIR format and push to Amazon Healthlake
   AppFlowHealthlakeLambdaFunction:
       Type: AWS::Serverless::Function
       Properties:
@@ -205,7 +249,6 @@ Resources:
           Variables:
             SERVICE_NAME: AppFlowDataHandler
             HL_ENDPOINT: !Ref HealthLakeEndpoint
-
         Policies:
           Statement:
             - Effect: Allow
@@ -295,10 +338,11 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "stepfunctions/${AWS::StackName}-ETL"                
-      
+
+  # Create an S3 bucket for CloudTrail logs.    
   LoggingBucket:
     Type: "AWS::S3::Bucket"
-    
+   # Create an S3 logging bucket policy for CloudTrail
   LoggingBucketPolicy:
     Type: 'AWS::S3::BucketPolicy'
     Properties:
@@ -320,30 +364,7 @@ Resources:
             StringEquals:
               "s3:x-amz-acl": "bucket-owner-full-control"
 
-  DatalakeBucketPolicy:
-    Type: "AWS::S3::BucketPolicy"
-    Properties: 
-      Bucket: !Ref DatalakeBucket
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-        - Effect: Allow
-          Principal:
-            Service: appflow.amazonaws.com
-          Action:
-          - s3:PutObject
-          - s3:AbortMultipartUpload
-          - s3:ListMultipartUploadParts
-          - s3:ListBucketMultipartUploads
-          - s3:GetBucketAcl
-          - s3:PutObjectAcl
-          Resource:
-          - !GetAtt DatalakeBucket.Arn
-          - !Join
-            - ''
-            - - 'arn:aws:s3:::'
-              - !Ref DatalakeBucket
-              - /*      
+
     
   CloudTrail:
     Type: "AWS::CloudTrail::Trail"
@@ -361,21 +382,41 @@ Resources:
           IncludeManagementEvents: true
           ReadWriteType: WriteOnly
 
-  EventRule: 
+# Event Rule to trigger Glue Crawler once data from salesforce come in.
+  EventRuleVeeva: 
     Type: AWS::Events::Rule
     Properties: 
       Description: "EventRule"
       State: "ENABLED"
       EventPattern: 
-        source: 
-          - "aws.s3"
-        detail: 
-          eventName: 
-            - "PutObject"
-          requestParameters:
-            bucketName: 
-              - !Ref DatalakeBucket
+        source:
+        - aws.appflow
+        detail:
+          flow-name:
+          - !Ref AppFlowSFDCtoS3
+      Targets: 
+        - 
+          Id: !Sub ${AWS::StackName}-GlueCrawler
+          Arn: !GetAtt GlueCrawlerTriggerFunction.Arn
+          RoleArn: !GetAtt EventsExecutionRole.Arn
 
+# Event Rule to trigger Step Function once we have data from Veeva in S3 datalake.
+  EventRuleVeeva: 
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: "EventRule"
+      State: "ENABLED"
+      EventPattern: 
+        source:
+        - aws.s3
+        detail:
+          requestParameters:
+            bucketName:
+            - !Ref DatalakeBucket
+            key:
+            - prefix: !Sub ${AWS::StackName}-veeva
+          eventName:
+          - PutObject
       Targets: 
         - 
           Id: !Sub ${AWS::StackName}-ETL
@@ -403,6 +444,14 @@ Resources:
                 Action: 
                   - states:StartExecution
                 Resource: !GetAtt StateMachine.Arn
+        - PolicyName: Amazon_EventBridge_Invoke_LambdaFunction
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - lambda:InvokeFunction
+                Resource: !GetAtt GlueCrawlerTriggerFunction.Arn
   KSMKey: 
     Type: AWS::KMS::Key
     Properties:
@@ -556,7 +605,6 @@ Resources:
         DestinationConnectorProperties:
           S3:
             BucketName: !Ref DatalakeBucket
-            BucketPrefix: !Sub ${AWS::StackName}-veeva,
             S3OutputFormatConfig:
               FileType: JSON
       KMSArn: !GetAtt KSMKey.Arn
