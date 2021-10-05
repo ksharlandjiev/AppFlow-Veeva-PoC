@@ -1,0 +1,131 @@
+{
+  "flowName": "s3-to-sfdc-update-patient-data-json",
+  "triggerConfig": {
+      "triggerType": "OnDemand"
+  },
+  "sourceFlowConfig": {
+      "connectorType": "S3",
+      "sourceConnectorProperties": {
+          "S3": {
+              "bucketName": "bds-datalakebucket-ewfrgcibs4q4",
+              "bucketPrefix": "aggregated",
+              "s3InputFormatConfig": {
+                  "s3InputFileType": "JSON"
+              }
+          }
+      }
+  },
+  "destinationFlowConfigList": [
+      {
+          "connectorType": "Salesforce",
+          "connectorProfileName": "sfdc",
+          "destinationConnectorProperties": {
+              "Salesforce": {
+                  "object": "Patient__c",
+                  "idFieldNames": [
+                      "Id"
+                  ],
+                  "writeOperationType": "UPDATE",
+                  "errorHandlingConfig": {
+                      "failOnFirstDestinationError": true
+                  }
+              }
+          }
+      }
+  ],
+  "tasks": [
+      {
+          "taskType": "Filter",
+          "sourceFields": [
+              "first_vaccine_applied__c",
+              "is_fully_vacinated__c",
+              "second_vaccine_applied__c",
+              "vaccine_date1__c",
+              "vaccine_date2__c",
+              "id"
+          ],
+          "taskProperties": {},
+          "connectorOperator": {
+              "S3": "PROJECTION"
+          }
+      },
+      {
+          "taskType": "Map",
+          "sourceFields": [
+              "first_vaccine_applied__c"
+          ],
+          "taskProperties": {
+              "DESTINATION_DATA_TYPE": "boolean"
+          },
+          "destinationField": "First_Vaccine_Applied__c",
+          "connectorOperator": {
+              "S3": "NO_OP"
+          }
+      },
+      {
+          "taskType": "Map",
+          "sourceFields": [
+              "is_fully_vacinated__c"
+          ],
+          "taskProperties": {
+              "DESTINATION_DATA_TYPE": "boolean"
+          },
+          "destinationField": "Is_Fully_Vacinated__c",
+          "connectorOperator": {
+              "S3": "NO_OP"
+          }
+      },
+      {
+          "taskType": "Map",
+          "sourceFields": [
+              "second_vaccine_applied__c"
+          ],
+          "taskProperties": {
+              "DESTINATION_DATA_TYPE": "boolean"
+          },
+          "destinationField": "Second_Vaccine_Applied__c",
+          "connectorOperator": {
+              "S3": "NO_OP"
+          }
+      },
+      {
+          "taskType": "Map",
+          "sourceFields": [
+              "vaccine_date1__c"
+          ],
+          "taskProperties": {
+              "DESTINATION_DATA_TYPE": "string"
+          },
+          "destinationField": "Vaccine_Date1__c",
+          "connectorOperator": {
+              "S3": "NO_OP"
+          }
+      },
+      {
+          "taskType": "Map",
+          "sourceFields": [
+              "vaccine_date2__c"
+          ],
+          "taskProperties": {
+              "DESTINATION_DATA_TYPE": "string"
+          },
+          "destinationField": "Vaccine_Date2__c",
+          "connectorOperator": {
+              "S3": "NO_OP"
+          }
+      },
+      {
+          "taskType": "Map",
+          "sourceFields": [
+              "id"
+          ],
+          "taskProperties": {
+              "DESTINATION_DATA_TYPE": "id"
+          },
+          "destinationField": "Id",
+          "connectorOperator": {
+              "S3": "NO_OP"
+          }
+      }
+  ]
+}

@@ -58,29 +58,15 @@
           }
         },
         {
-          "StartAt": "Update Salesforce Records",
+          "StartAt": "StartFlow",
           "States": {
-            "Update Salesforce Records": {
+            "StartFlow": {
               "Type": "Task",
-              "Resource": "arn:aws:states:::lambda:invoke",
-              "OutputPath": "$.Payload",
+              "End": true,
               "Parameters": {
-                "Payload.$": "$",
-                "FunctionName": "${AppFlowTriggerLambda}:$LATEST"
+                "FlowName": "${AppFlowNameTrigger}"
               },
-              "Retry": [
-                {
-                  "ErrorEquals": [
-                    "Lambda.ServiceException",
-                    "Lambda.AWSLambdaException",
-                    "Lambda.SdkClientException"
-                  ],
-                  "IntervalSeconds": 2,
-                  "MaxAttempts": 6,
-                  "BackoffRate": 2
-                }
-              ],
-              "End": true
+              "Resource": "arn:aws:states:::aws-sdk:appflow:startFlow"
             }
           }
         }
